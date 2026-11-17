@@ -1,3 +1,6 @@
 .venv/
+.venv-mp/
 __pycache__/
 *.py[cod]
+pip_resolve.log
+pip_resolve.pid
