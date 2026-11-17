@@ -15,7 +15,11 @@ class CameraStream:
         stall_timeout_s=3.0,
         max_reopens=3,
         cap_factory=None,
+        cv_threads=1,
     ):
+        # cv2.setNumThreads is process-global.
+        cv2.setNumThreads(cv_threads)
+        self.cv_threads = cv_threads
         self.index = index
         self.width = width
         self.height = height
@@ -65,6 +69,16 @@ class CameraStream:
                 "fatal_error": self._fatal_error,
                 "running": self._running,
             }
+
+    def read_cap_prop(self, prop):
+        with self._cap_lock:
+            cap = self._cap
+            if cap is None:
+                return None
+            try:
+                return cap.get(prop)
+            except Exception:
+                return None
 
     @property
     def fatal_error(self):

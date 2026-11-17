@@ -3,6 +3,8 @@ import threading
 import time
 import unittest
 
+import cv2
+
 from capture import CameraStream
 
 
@@ -47,6 +49,10 @@ class CameraStreamTests(unittest.TestCase):
                 return True
             time.sleep(0.01)
         return False
+
+    def test_construction_sets_cv_threads_to_one(self):
+        CameraStream(cap_factory=lambda index: FakeCapture())
+        self.assertEqual(cv2.getNumThreads(), 1)
 
     def test_latest_frame_only(self):
         cap = FakeCapture(delay=0.01)

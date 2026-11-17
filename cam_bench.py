@@ -3,6 +3,7 @@ import argparse
 import threading
 import time
 
+import cv2
 import psutil
 
 from capture import CameraStream
@@ -36,6 +37,7 @@ def main():
     process = psutil.Process()
     samples = []
     thread_rows = []
+    window_fps_values = []
     stream = CameraStream(
         index=0,
         width=640,
@@ -99,6 +101,34 @@ def main():
                     line += " window_fps=n/a"
                 else:
                     line += f" window_fps={window_fps:.2f}"
+                    window_fps_values.append(window_fps)
+                if latest is not None:
+                    try:
+                        brightness = float(latest[0].mean())
+                    except Exception:
+                        brightness = None
+                else:
+                    brightness = None
+                auto_exposure = stream.read_cap_prop(
+                    cv2.CAP_PROP_AUTO_EXPOSURE
+                )
+                exposure = stream.read_cap_prop(cv2.CAP_PROP_EXPOSURE)
+                brightness_text = (
+                    "n/a" if brightness is None else f"{brightness:.2f}"
+                )
+                auto_exposure_text = (
+                    "n/a"
+                    if auto_exposure is None
+                    else f"{auto_exposure:.2f}"
+                )
+                exposure_text = (
+                    "n/a" if exposure is None else f"{exposure:.2f}"
+                )
+                line += (
+                    f" brightness={brightness_text} "
+                    f"auto_exposure={auto_exposure_text} "
+                    f"exposure={exposure_text}"
+                )
                 window_start_frames = stats["frames_captured"]
                 window_start_ts = (
                     latest[1]
@@ -151,6 +181,25 @@ def main():
     if thread_rows:
         top = max(thread_rows, key=lambda row: row[4])
         print(f"Top CPU thread: {top[0]} (tid={top[1]}) total={top[4]:.2f}s")
+    if window_fps_values:
+        print(f"Window FPS min: {min(window_fps_values):.2f}")
+        print(f"Window FPS max: {max(window_fps_values):.2f}")
+    else:
+        print("Window FPS min: n/a")
+        print("Window FPS max: n/a")
+    rss_at_5 = next(
+        (
+            sample["rss"]
+            for sample in samples
+            if sample["elapsed"] >= 5.0 - 1e-9
+        ),
+        None,
+    )
+    if rss_at_5 is not None and samples:
+        rss_change = samples[-1]["rss"] - rss_at_5
+        print(f"RSS change MB (final - t=5s): {rss_change:.2f}")
+    else:
+        print("RSS change MB (final - t=5s): n/a")
 
     return 0
 
