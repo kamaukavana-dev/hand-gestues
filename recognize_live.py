@@ -17,7 +17,7 @@ import mediapipe as mp
 import psutil
 
 from capture import CameraStream
-from gesture_logic import RateLimiter, WindowStats, classify
+from gesture_logic import MonotonicMs, RateLimiter, WindowStats, classify
 
 MODEL_PATH = "models/gesture_recognizer.task"
 ALLOWED_LOG_DIR = os.path.realpath(os.path.expanduser("~/hand-gestures/logs"))
@@ -99,12 +99,12 @@ def main():
 
     # Telemetry and state trackers
     limiter = RateLimiter(max_fps=args.max_fps)
+    mono_ms = MonotonicMs()
     window_stats = WindowStats()
     total_stats = WindowStats()
     per_label_counts = collections.Counter()
 
     last_processed_frame_ts = None
-    last_mp_ts_ms = -1
     last_state_label = None
 
     limiter_skips_window = 0
@@ -154,10 +154,7 @@ def main():
                 convert_ms = (time.perf_counter() - t_conv_0) * 1000.0
 
                 # Monotonic timestamp generation in milliseconds
-                ts_ms = int(frame_ts * 1000)
-                if ts_ms <= last_mp_ts_ms:
-                    ts_ms = last_mp_ts_ms + 1
-                last_mp_ts_ms = ts_ms
+                ts_ms = mono_ms.next(frame_ts)
 
                 # Inference timing
                 t_inf_0 = time.perf_counter()
