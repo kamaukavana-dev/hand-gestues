@@ -4,3 +4,5 @@ __pycache__/
 *.py[cod]
 pip_resolve.log
 pip_resolve.pid
+resolve.pid
+resolve.log
