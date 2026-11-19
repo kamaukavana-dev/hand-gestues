@@ -10,3 +10,6 @@ pip_install.log
 pip_install.pid
 .idea/
 nohup.out
+models/
+dl.log
+dl.pid
