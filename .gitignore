@@ -13,3 +13,4 @@ nohup.out
 models/
 dl.log
 dl.pid
+logs/
