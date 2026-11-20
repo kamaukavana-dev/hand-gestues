@@ -2,7 +2,7 @@
 """Unit tests for gesture recognition business logic, rate limiter, and telemetry stats."""
 import unittest
 
-from gesture_logic import RateLimiter, WindowStats, classify
+from gesture_logic import MonotonicMs, RateLimiter, WindowStats, classify
 
 
 class FakeCategory:
@@ -135,6 +135,34 @@ class TestWindowStats(unittest.TestCase):
         self.assertAlmostEqual(fractions["NO_HAND"], 0.60)
         self.assertAlmostEqual(fractions["GESTURE"], 0.30)
         self.assertAlmostEqual(fractions["NONE"], 0.10)
+
+
+class TestMonotonicMs(unittest.TestCase):
+    def test_normal(self):
+        m = MonotonicMs()
+        self.assertEqual(m.next(1.000), 1000)
+        self.assertEqual(m.next(1.025), 1025)
+        self.assertEqual(m.next(1.050), 1050)
+
+    def test_equal(self):
+        m = MonotonicMs()
+        self.assertEqual(m.next(2.000), 2000)
+        self.assertEqual(m.next(2.000), 2001)
+
+    def test_decreasing(self):
+        m = MonotonicMs()
+        self.assertEqual(m.next(3.500), 3500)
+        self.assertEqual(m.next(3.200), 3501)
+        self.assertEqual(m.next(2.000), 3502)
+
+    def test_burst_of_identical_inputs(self):
+        m = MonotonicMs()
+        vals = [m.next(5.123) for _ in range(100)]
+        expected = list(range(5123, 5123 + 100))
+        self.assertEqual(vals, expected)
+        # Verify strictly increasing
+        for a, b in zip(vals, vals[1:]):
+            self.assertGreater(b, a)
 
 
 if __name__ == "__main__":

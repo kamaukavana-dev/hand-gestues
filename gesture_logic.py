@@ -39,6 +39,26 @@ def classify(result):
     return ("GESTURE", label, score, handedness)
 
 
+class MonotonicMs:
+    """Generates strictly increasing integer millisecond timestamps from seconds.
+
+    next(t_seconds) returns int(t_seconds * 1000). If that is <= last, returns last + 1.
+    """
+
+    def __init__(self):
+        self.last_ts_ms = None
+
+    def next(self, t_seconds):
+        ts = int(float(t_seconds) * 1000)
+        if self.last_ts_ms is not None and ts <= self.last_ts_ms:
+            ts = self.last_ts_ms + 1
+        self.last_ts_ms = ts
+        return ts
+
+    def reset(self):
+        self.last_ts_ms = None
+
+
 class RateLimiter:
     """Enforces a maximum execution rate (max_fps).
 
