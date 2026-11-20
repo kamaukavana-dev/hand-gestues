@@ -1,0 +1,25 @@
+Thu Nov 19 08:22:46 AM UTC 2026
+url=https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task
+HTTP/2 200 
+content-type: application/octet-stream
+x-guploader-uploadid: AFy3sg32pnvGnVi69jk794u1ZDPuPGUQgp0-qr5nwkrVLUUgVlKPmh9mNdeep_WEG3Zt2B2f2M3oGtA
+expires: Thu, 19 Nov 2026 09:22:47 GMT
+date: Thu, 19 Nov 2026 08:22:47 GMT
+cache-control: public, max-age=3600
+last-modified: Wed, 26 Apr 2023 03:33:22 GMT
+etag: "4dbf485c473207651100a1895343f35a"
+x-goog-generation: 1682480002665893
+x-goog-metageneration: 1
+x-goog-stored-content-encoding: identity
+x-goog-stored-content-length: 8373440
+x-goog-hash: crc32c=Ploz0Q==
+x-goog-hash: md5=Tb9IXEcyB2URAKGJU0PzWg==
+x-goog-storage-class: STANDARD
+accept-ranges: bytes
+content-length: 8373440
+vary: Origin
+server: UploadServer
+alt-svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+
+-rw-rw-r-- 1 kavana-daniel kavana-daniel 8373440 Nov 19 11:22 models/gesture_recognizer.task
+97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482  models/gesture_recognizer.task
