@@ -6,3 +6,7 @@ pip_resolve.log
 pip_resolve.pid
 resolve.pid
 resolve.log
+pip_install.log
+pip_install.pid
+.idea/
+nohup.out
