@@ -5,10 +5,11 @@ Usage:
     .venv-mp/bin/python preview_live.py [--max-fps N] [--seconds N] [--mirror|--no-mirror]
 
 Constraints:
-- Camera opened ONLY through CameraStream.
+- Camera opened ONLY through CameraStream (context manager).
 - No cv2.imwrite, no cv2.VideoWriter, no file writes, no network calls.
-- Recognizer and camera released on ALL paths (KeyboardInterrupt included).
+- Recognizer closed and windows destroyed on ALL paths (KeyboardInterrupt included).
 - MediaPipe API: mp.tasks.vision / mp.tasks.BaseOptions only.
+- Display frame is always a copy of the camera frame (mirror or not).
 """
 import argparse
 import os
@@ -79,6 +80,109 @@ def _build_recognizer(model_path):
     return GestureRecognizer.create_from_options(options)
 
 
+# ---------------------------------------------------------------------------
+# Testable loop kernel
+# ---------------------------------------------------------------------------
+def run_preview(stream, recognizer, args, show_fn, clock=time.monotonic):
+    """Run the preview loop.
+
+    Parameters
+    ----------
+    stream      : CameraStream (already started via context manager)
+    recognizer  : object with .recognize_for_video(mp_image, ts_ms) and .close()
+    args        : namespace with .max_fps, .seconds, .mirror
+    show_fn     : callable(display_frame) -> int key code (from cv2.waitKey)
+    clock       : callable() -> float monotonic seconds (injectable for tests)
+
+    Returns
+    -------
+    exit_reason : str — one of "deadline", "user_quit", "fatal_camera"
+    """
+    mono_ms = MonotonicMs()
+    rate = RateLimiter(max_fps=args.max_fps)
+    deadline = clock() + args.seconds
+    last_frame_ts = None
+
+    while clock() < deadline:
+        if stream.fatal_error:
+            return "fatal_camera"
+
+        latest = stream.get_latest()
+        if latest is None:
+            time.sleep(0.005)
+            continue
+
+        frame_bgr, frame_ts = latest
+
+        # Skip if same frame as last inference
+        if last_frame_ts is not None and frame_ts == last_frame_ts:
+            time.sleep(0.005)
+            continue
+
+        if not rate.allow():
+            last_frame_ts = frame_ts
+            continue
+
+        last_frame_ts = frame_ts
+
+        h, w = frame_bgr.shape[:2]
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=frame_rgb,
+        )
+
+        ts_ms = mono_ms.next(frame_ts)
+
+        # Inference
+        t0 = clock()
+        result = recognizer.recognize_for_video(mp_image, ts_ms)
+        infer_ms = (clock() - t0) * 1000.0
+
+        state, label, score, handedness = classify(result)
+
+        landmarks = None
+        if result.hand_landmarks:
+            landmarks = result.hand_landmarks[0]
+
+        is_clipped_flag = clipped(landmarks) if landmarks else False
+
+        # Always build a copy so the camera frame is never mutated
+        display = frame_bgr.copy()
+        if args.mirror:
+            display = cv2.flip(display, 1)
+
+        _draw_guide_rect(display, w, h)
+
+        if landmarks:
+            _draw_skeleton(display, landmarks, w, h, args.mirror, is_clipped_flag)
+
+        cam_stats = stream.stats()
+        det_fps = cam_stats.get("measured_fps", 0.0)
+        cam_fps = det_fps
+
+        lines = hud_lines(
+            state=state,
+            label=label,
+            score=score,
+            infer_ms=infer_ms,
+            det_fps=det_fps,
+            cam_fps=cam_fps,
+            is_clipped=is_clipped_flag,
+        )
+        _draw_hud(display, lines, w, h)
+
+        key = show_fn(display)
+        if key == ord("q") or key == 27:  # 'q' or Esc
+            return "user_quit"
+
+    return "deadline"
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
         description="Live hand-gesture preview with skeleton overlay and HUD."
@@ -120,79 +224,14 @@ def main():
     recognizer = _build_recognizer(model_path)
     print(f"RSS after recognizer:  {proc.memory_info().rss / 1_048_576:.1f} MB")
 
-    mono_ms = MonotonicMs()
-    rate = RateLimiter(max_fps=args.max_fps)
-    deadline = time.monotonic() + args.seconds
+    def show_fn(frame):
+        cv2.imshow("Gesture Preview", frame)
+        return cv2.waitKey(1) & 0xFF
 
-    cam = CameraStream(cv_threads=1)
     try:
-        while time.monotonic() < deadline:
-            frame_bgr = cam.read()
-            if frame_bgr is None:
-                continue
-
-            if not rate.allow():
-                # Still show the previous frame if any; just skip inference
-                cv2.waitKey(1)
-                continue
-
-            h, w = frame_bgr.shape[:2]
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-            # Build mp.Image
-            mp_image = mp.Image(
-                image_format=mp.ImageFormat.SRGB,
-                data=frame_rgb,
-            )
-
-            # Strictly-increasing ms timestamp
-            ts_ms = mono_ms.next(time.monotonic())
-
-            # Inference
-            t0 = time.monotonic()
-            result = recognizer.recognize_for_video(mp_image, ts_ms)
-            infer_ms = (time.monotonic() - t0) * 1000.0
-
-            state, label, score, handedness = classify(result)
-
-            # Landmarks (may be absent)
-            landmarks = None
-            if result.hand_landmarks:
-                landmarks = result.hand_landmarks[0]
-
-            is_clipped_flag = clipped(landmarks) if landmarks else False
-
-            # --- Drawing (mutate a copy displayed to user) ---
-            display = frame_bgr.copy() if args.mirror else frame_bgr
-            if args.mirror:
-                display = cv2.flip(display, 1)
-
-            _draw_guide_rect(display, w, h)
-
-            if landmarks:
-                _draw_skeleton(display, landmarks, w, h, args.mirror, is_clipped_flag)
-
-            det_fps = rate.actual_fps() if hasattr(rate, "actual_fps") else args.max_fps
-            cam_fps = cam.fps() if hasattr(cam, "fps") else 0.0
-
-            lines = hud_lines(
-                state=state,
-                label=label,
-                score=score,
-                infer_ms=infer_ms,
-                det_fps=det_fps,
-                cam_fps=cam_fps,
-                is_clipped=is_clipped_flag,
-            )
-            _draw_hud(display, lines, w, h)
-
-            cv2.imshow("Gesture Preview", display)
-
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q") or key == 27:  # 'q' or Esc
-                print("User quit.")
-                break
-
+        with CameraStream(cv_threads=1) as stream:
+            reason = run_preview(stream, recognizer, args, show_fn)
+            print(f"Exit reason: {reason}")
     except KeyboardInterrupt:
         print("\nKeyboardInterrupt — releasing resources.")
     finally:
